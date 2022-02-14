@@ -1,10 +1,15 @@
+import configparser
+from email.mime import image
+from re import I, T
 import sys
 from dataclasses import dataclass
 from configparser import ConfigParser
 
 import win32gui
+from win32clipboard import *
 
 import tkinter as tk
+from tkinter import messagebox
 from typing import Callable, Any, Tuple, List, Dict
 
 import cv2
@@ -19,6 +24,7 @@ COLOR_FG_ORANGE = 'orange2'
 FONT_BIG = ('Consolas', '14')
 FONT_SMALL = ('Consolas', '9')
 
+
 @dataclass
 class RecipeItemNode:
     item: str
@@ -30,7 +36,74 @@ class ArchnemesisItemsMap:
     """
     def __init__(self, scale: float):
         # Put everything into the list so we could maintain the display order
-        self._arch_items = [
+
+        zh_tw = [
+            ('奇塔弗之觸', ['圖克哈瑪之觸', '艾貝拉斯之觸', '腐化者', '陰屍爆破']),
+            ('善之觸', ['月神之觸', '日神之觸', '鏡像幻影', '魔靈吸取']),
+            ('夏卡莉之觸', ['尾隨魔', '嗜魂者', '乾旱先鋒']),
+            ('艾貝拉斯之觸', ['炎行者', '喪心病狂', '振興']),
+            ('圖克哈瑪之觸', ['裂骨者', '劊子手', '熔岩屏障']),
+            ('海洋王之觸', ['冰牢', '風行者', '先鋒召喚物']),
+            ('艾爾卡莉之觸', ['陰屍爆破', '尾隨魔', '刺客']),
+            ('日神之觸', ['刀槍不入', '熔岩屏障', '增幅召喚物']),
+            ('月神之觸', ['刀槍不入', '霜行者', '增幅召喚物']),
+            ('雕像', ['咒術師', '憎惡', '腐化者']),
+            ('強化元素', ['招魂師', '鑄鋼', '混沌編織']),
+            ('晶瑩剔透', ['永凍土', '振興', '狂戰士']),
+            ('刀槍不入', ['哨兵', '勇士', '奉獻使徒']),
+            ('腐化者', ['放血者', '混沌編織']),
+            ('魔靈吸取', ['奉獻使徒', '發電機']),
+            ('風行者', ['風暴編織', '急速']),
+            ('鏡像幻影', ['回聲者', '魂靈牽引']),
+            ('熔岩屏障', ['縱火', '裂骨者']),
+            ('招魂師', ['烈焰編織', '冰霜編織', '風暴編織']),
+            ('陰屍爆破', ['死靈師', '縱火']),
+            ('炎行者', ['烈焰編織', '急速']),
+            ('嗜魂者', ['魂靈牽引', '死靈師', '龐然大物']),
+            ('冰牢', ['永凍土', '哨兵']),
+            ('霜行者', ['冰霜編織', '急速']),
+            ('樹人部落', ['毒素', '哨兵', '鑄鋼']),
+            ('短暫幻想', ['勇士', '咒術師', '奧術緩衝']),
+            ('尾隨魔', ['毒素', '放血者']),
+            ('乾旱先鋒', ['憎惡', '銳眼']),
+            ('咒術師', ['混沌編織', '回聲者']),
+            ('劊子手', ['喪心病狂', '狂戰士']),
+            ('振興', ['龐然大物', '吸血魔']),
+            ('死靈師', ['投彈手', '超負荷']),
+            ('詐欺師', ['超負荷', '刺客', '回聲者']),
+            ('刺客', ['銳眼', '吸血魔']),
+            ('增幅召喚物', ['死靈師', '劊子手', '龐然大物']),
+            ('先鋒召喚物', ['發電機', '奧術緩衝']),
+            ('奧術緩衝', []),
+            ('狂戰士', []),
+            ('放血者', []),
+            ('投彈手', []),
+            ('裂骨者', []),
+            ('混沌編織', []),
+            ('奉獻使徒', []),
+            ('銳眼', []),
+            ('發電機', []),
+            ('回聲者', []),
+            ('烈焰編織', []),
+            ('喪心病狂', []),
+            ('冰霜編織', []),
+            ('龐然大物', []),
+            ('急速', []),
+            ('縱火', []),
+            ('勇士', []),
+            ('憎惡', []),
+            ('豐饒', []),
+            ('超負荷', []),
+            ('永凍土', []),
+            ('哨兵', []),
+            ('魂靈牽引', []),
+            ('鑄鋼', []),
+            ('風暴編織', []),
+            ('毒素', []),
+            ('吸血魔', [])
+        ]
+
+        eng = [
             ('Kitava-Touched', ['Tukohama-Touched', 'Abberath-Touched', 'Corrupter', 'Corpse Detonator']),
             ('Innocence-Touched', ['Lunaris-Touched', 'Solaris-Touched', 'Mirror Image', 'Mana Siphoner']),
             ('Shakari-Touched', ['Entangler', 'Soul Eater', 'Drought Bringer']),
@@ -95,6 +168,17 @@ class ArchnemesisItemsMap:
             ('Toxic', []),
             ('Vampiric', [])
         ]
+
+        langs = configparser.ConfigParser()
+        langs.read('settings.ini')
+        langs_bool = langs['settings'].get('change_to_chinese')
+        langs_bool = True if langs_bool is not None and langs_bool == 'True' else False
+
+        if  langs_bool:
+            self._arch_items = zh_tw
+        else:
+            self._arch_items = eng
+
         self._images = dict()
         self._small_image_size = 30
         self._update_images(scale)
@@ -112,7 +196,16 @@ class ArchnemesisItemsMap:
             self._images[item]['display-small-image'] = ImageTk.PhotoImage(image=image)
 
     def _load_image(self, item: str, scale: float):
-        image = Image.open(f'pictures/{item}.png')
+
+        langs = configparser.ConfigParser()
+        langs.read('settings.ini')
+        langs_bool = langs['settings'].get('change_to_chinese')
+        langs_bool = True if langs_bool is not None and langs_bool == 'True' else False
+
+        if  langs_bool:
+            image = Image.open(f'pictures_zh_tw/{item}.png')
+        else:
+            image = Image.open(f'pictures_eng/{item}.png')
         # Scale the image according to the input parameter
         return image.resize((int(image.width * scale), int(image.height * scale)))
 
@@ -145,7 +238,7 @@ class ArchnemesisItemsMap:
             if recipe:
                 yield (item, recipe)
 
-    def get_subtree_for(self, item):
+    def get_subtree_for(self, item: str):
         tree = RecipeItemNode(item, [])
         nodes = [tree]
         while len(nodes) > 0:
@@ -155,6 +248,13 @@ class ArchnemesisItemsMap:
                 node.components = [RecipeItemNode(c, []) for c in children]
                 nodes.extend(node.components)
         return tree
+
+    def get_parent_recipes_for(self, item: str) -> []:
+        parents = list()
+        for parent, components in self._arch_items:
+            if item in components:
+                parents.append(parent)
+        return parents
 
     def _get_item_components(self, item) -> List[str]:
         return next(l for x, l in self._arch_items if x == item)
@@ -258,9 +358,11 @@ class UIOverlay:
         self._root = root
         self._scan_results_window = None
         self._recipe_browser_window = None
+        self._recipe_browser_current_root = ''
         self._tooltip_window = None
         self._highlight_windows_to_show = list()
         self._scan_results_window_saved_position = (-1, 0)
+
 
         self._settings = Settings(root, items_map, image_scanner)
         self._create_controls()
@@ -269,6 +371,7 @@ class UIOverlay:
         self._root.overrideredirect(True)
         self._root.geometry(f'+{info.x + 5}+{info.y + info.title_bar_height + 5}')
         self._root.wm_attributes('-topmost', True)
+        self._root.deiconify()
 
     @staticmethod
     def create_toplevel_window(bg=''):
@@ -295,7 +398,7 @@ class UIOverlay:
         self._scan_label = tk.Button(self._root, textvariable=self._scan_label_text, fg=COLOR_FG_GREEN, bg=COLOR_BG, font=FONT_SMALL)
         self._scan_label.bind("<Button-1>", self._scan)
         self._scan_label.bind('<B3-Motion>', lambda event: self._drag(self._root, -5, -5, event))
-        self._scan_label.grid(row=0, column=2)
+        self._scan_label.grid(row=0, column=3)
 
     def _drag(self, window, offset_x: int, offset_y: int, event) -> Tuple[int, int]:
         x = offset_x + event.x + window.winfo_x()
@@ -392,10 +495,19 @@ class UIOverlay:
     def _show_recipe_browser_tree(self, item: str, results: Dict[str, List[Tuple[int, int]]]) -> None:
         if self._recipe_browser_window is not None:
             self._recipe_browser_window.destroy()
+        self._destroy_tooltip_and_clear_highlights(None)
+        # If the user clicks on the current root then close the tree
+        if self._recipe_browser_current_root == item:
+            return
+        self._recipe_browser_current_root = item
         self._recipe_browser_window = UIOverlay.create_toplevel_window()
-        self._recipe_browser_window.geometry(f'+{self._scan_results_window.winfo_x()}+{self._scan_results_window.winfo_y() + self._scan_results_window.winfo_height() + 20}')
+        self._recipe_browser_window.geometry(f'+{self._scan_results_window.winfo_x()}+{self._scan_results_window.winfo_y() + self._scan_results_window.winfo_height() + 40}')
 
         tree = self._items_map.get_subtree_for(item)
+        if self._settings.should_copy_recipe_to_clipboard():
+            self._copy_tree_items_to_clipboard(tree)
+        
+
         def draw_tree(node, row, column):
             children_column = column
             for c in node.components:
@@ -415,9 +527,16 @@ class UIOverlay:
                 f = tk.Frame(self._recipe_browser_window, bg=COLOR_BG, width=(self._items_map.small_image_size + 4) * columnspan, height=3)
                 f.grid(row=row + 1, column=column, columnspan=columnspan)
             return children_column + 1
-        total_columns = draw_tree(tree, 0, 0)
+        total_columns = draw_tree(tree, 1, 0)
         for c in range(total_columns):
             self._recipe_browser_window.grid_columnconfigure(c, minsize=self._items_map.small_image_size)
+        # Show parents on row 0
+        parents = [RecipeItemNode(p, []) for p in self._items_map.get_parent_recipes_for(item)]
+        if len(parents) > 0:
+            tk.Label(self._recipe_browser_window, text='Used in:', bg=COLOR_BG, fg=COLOR_FG_GREEN, font=FONT_BIG).grid(row=0, column=0)
+            for column, p in enumerate(parents):
+                # Reuse the same function for convenience
+                draw_tree(p, 0, column + 1)
 
     def _highlight_items_in_inventory(self, inventory_items: List[Tuple[int, int]], color: str) -> None:
         self._highlight_windows_to_show = list()
@@ -439,11 +558,22 @@ class UIOverlay:
         if self._tooltip_window is not None:
             self._tooltip_window.destroy()
         self._tooltip_window = UIOverlay.create_toplevel_window()
-        self._tooltip_window.geometry(f'+{window.winfo_x()}+{window.winfo_y() - 20}')
+        self._tooltip_window.geometry(f'+{window.winfo_x()}+{window.winfo_y() - 40}')
         tk.Label(self._tooltip_window, text=text, font=FONT_BIG, bg=COLOR_BG, fg=COLOR_FG_GREEN).pack()
 
         if inventory_items is not None:
             self._highlight_items_in_inventory(inventory_items, COLOR_FG_GREEN)
+
+    def _copy_tree_items_to_clipboard(self, tree):
+        if len(tree.components) > 0:
+            search_string = '|'.join((str(x.item) for x in tree.components))
+        else:
+            search_string = tree.item
+
+        OpenClipboard()
+        EmptyClipboard()
+        SetClipboardText('^('+search_string+')')
+        CloseClipboard()
 
     def _destroy_tooltip_and_clear_highlights(self, _) -> None:
         if self._tooltip_window is not None:
@@ -459,6 +589,7 @@ class Settings:
         self._root = root
         self._items_map = items_map
         self._image_scanner = image_scanner
+        self._window = None
 
         self._config = ConfigParser()
         self._config_file = 'settings.ini'
@@ -477,9 +608,16 @@ class Settings:
         self._display_inventory_items = True if b is not None and b == 'True' else False
         b = s.get('display_unavailable_recipes')
         self._display_unavailable_recipes = True if b is not None and b == 'True' else False
+        b = s.get('copy_recipe_to_clipboard')
+        self._copy_recipe_to_clipboard = True if b is not None and b == 'True' else False
+        b = s.get('change_to_chinese')
+        self._change_to_chinese = True if b is not None and b == 'True' else False
+        
 
 
     def show(self) -> None:
+        if self._window is not None:
+            return
         self._window = tk.Toplevel()
 
         self._window.geometry('+100+200')
@@ -511,8 +649,21 @@ class Settings:
         if self._display_unavailable_recipes:
             c.select()
 
+        c = tk.Checkbutton(self._window, text='Copy recipe to clipboard', command=self._update_copy_recipe_to_clipboard)
+        c.grid(row=5, column=0, columnspan=2)
+        if self._copy_recipe_to_clipboard:
+            c.select()
+
+        c = tk.Checkbutton(self._window, text='Change to chinese', command=self._update_change_to_chinese)
+        c.grid(row=6, column=0, columnspan=2)
+        if self._change_to_chinese:
+            c.select()
+
+
     def _close(self) -> None:
-        self._window.destroy()
+        if self._window is not None:
+            self._window.destroy()
+        self._window = None
 
     def _save_config(self) -> None:
         self._config['settings']['scanner_window'] = str(self._image_scanner.scanner_window_size)
@@ -520,6 +671,9 @@ class Settings:
         self._config['settings']['confidence_threshold'] = str(self._image_scanner.confidence_threshold)
         self._config['settings']['display_inventory_items'] = str(self._display_inventory_items)
         self._config['settings']['display_unavailable_recipes'] = str(self._display_unavailable_recipes)
+        self._config['settings']['copy_recipe_to_clipboard'] = str(self._copy_recipe_to_clipboard)
+        self._config['settings']['change_to_chinese'] = str(self._change_to_chinese)
+
         with open(self._config_file, 'w') as f:
             self._config.write(f)
 
@@ -562,15 +716,41 @@ class Settings:
         self._display_unavailable_recipes = not self._display_unavailable_recipes
         self._save_config()
 
+    def _update_copy_recipe_to_clipboard(self) -> None:
+        self._copy_recipe_to_clipboard = not self._copy_recipe_to_clipboard
+        self._save_config()
+
+    def _update_change_to_chinese(self) -> None:
+        self._change_to_chinese = not self._change_to_chinese
+        self._save_config()
+
+
     def should_display_inventory_items(self) -> bool:
         return self._display_inventory_items
 
     def should_display_unavailable_recipes(self) -> bool:
         return self._display_unavailable_recipes
 
+    def should_copy_recipe_to_clipboard(self) -> bool:
+        return self._copy_recipe_to_clipboard
+    
+    def should_change_to_chinese(self) -> bool:
+        return self._change_to_chinese
+
+def show_warning(text: str) -> None:
+    messagebox.showwarning('poe-archnemesis-scanner', text)
+
+def show_error_and_die(text: str) -> None:
+    # Dealing with inconveniences as Perl would
+    messagebox.showerror('poe-archnemesis-scanner', text)
+    sys.exit()
+
 def get_poe_window_info() -> PoeWindowInfo:
     info = PoeWindowInfo()
     hwnd = win32gui.FindWindow(None, 'Path of Exile')
+    if hwnd == 0:
+        show_error_and_die('Path of Exile is not running.')
+
     x0, y0, x1, y1 = win32gui.GetWindowRect(hwnd)
     info.x = x0
     info.y = y0
@@ -579,6 +759,14 @@ def get_poe_window_info() -> PoeWindowInfo:
     x0, y0, x1, y1 = win32gui.GetClientRect(hwnd)
     info.client_width = x1 - x0
     info.client_height = y1 - y0
+
+    if info.client_width == 0 or info.client_height == 0:
+        show_warning("Unable to detect Path of Exile resolution. Make sure it isn't running in the Fullscreen mode.\n\nThe tool will use your screen resolution for calculations instead.")
+        screen = ImageGrab.grab()
+        info.x = 0
+        info.y = 0
+        info.width, info.height = screen.size
+        info.client_width, info.client_height = screen.size
     info.title_bar_height = info.height - info.client_height
     return info
 
@@ -599,6 +787,7 @@ def calculate_default_scale(info: PoeWindowInfo) -> float:
 
 # Create root as early as possible to initialize some modules (e.g. ImageTk)
 root = tk.Tk()
+root.withdraw()
 
 info = get_poe_window_info()
 
